@@ -10,7 +10,6 @@ const methodOverride = require("method-override");
 const ejsMate = require("ejs-mate");
 const ExpressError = require("./utils/ExpressError.js");
 const session = require("express-session");
-const MongoStore = require("connect-mongo");
 const flash = require("connect-flash");
 const passport = require("passport");
 const LocalStrategy = require("passport-local");
@@ -38,30 +37,18 @@ app.use(methodOverride("_method"));
 app.use(express.static(path.join(__dirname, "public")));
 
 // ============================================================
-// 🔥 IMPORTANT PART: DB CONNECT → THEN SESSION → THEN SERVER
+// 🔥 DB CONNECT → SESSION → PASSPORT → ROUTES → SERVER
 // ============================================================
 
 async function startServer() {
     try {
-        // 1️⃣ Connect DB first
+        // 1️⃣ Connect MongoDB
         await mongoose.connect(dbUrl);
         console.log("✅ Connected to MongoDB");
 
-        // 2️⃣ Create session store AFTER DB connect
-        const store = MongoStore.create({
-            client: mongoose.connection.getClient(),
-            crypto: { secret: process.env.SECRET },
-            touchAfter: 24 * 3600,
-        });
-
-        store.on("error", (err) => {
-            console.log("❌ SESSION STORE ERROR:", err);
-        });
-
-        // 3️⃣ Session middleware
+        // 2️⃣ SIMPLE SESSION (NO connect-mongo)
         app.use(
             session({
-                store,
                 secret: process.env.SECRET,
                 resave: false,
                 saveUninitialized: false,
@@ -76,14 +63,14 @@ async function startServer() {
 
         app.use(flash());
 
-        // 4️⃣ Passport
+        // 3️⃣ Passport
         app.use(passport.initialize());
         app.use(passport.session());
         passport.use(new LocalStrategy(User.authenticate()));
         passport.serializeUser(User.serializeUser());
         passport.deserializeUser(User.deserializeUser());
 
-        // 5️⃣ Locals
+        // 4️⃣ Locals
         app.use((req, res, next) => {
             res.locals.success = req.flash("success");
             res.locals.error = req.flash("error");
@@ -91,24 +78,24 @@ async function startServer() {
             next();
         });
 
-        // 6️⃣ Routes
+        // 5️⃣ Routes
         app.use("/listings", listingRouter);
         app.use("/listings/:id/reviews", reviewRouter);
         app.use("/", userRouter);
 
-        // 7️⃣ 404
+        // 6️⃣ 404
         app.use((req, res, next) => {
             next(new ExpressError(404, "Page Not Found"));
         });
 
-        // 8️⃣ Error handler
+        // 7️⃣ Error handler
         app.use((err, req, res, next) => {
             const statusCode = err.statusCode || 500;
             const message = err.message || "Something went wrong!";
             res.status(statusCode).render("error.ejs", { message });
         });
 
-        // 9️⃣ Start server LAST
+        // 8️⃣ Start server
         const port = process.env.PORT || 8080;
         app.listen(port, () => {
             console.log(`🚀 Server running on port ${port}`);
