@@ -1,115 +1,115 @@
-const ExpressError = require("../utils/ExpressError");
 const Listing = require("../models/listing");
 const mongoose = require("mongoose");
 
 // ================= INDEX =================
 module.exports.index = async (req, res) => {
-    const allListings = await Listing.find({});
-    res.render("listings/index.ejs", { allListings });
+  const allListings = await Listing.find({});
+  res.render("listings/index.ejs", { allListings });
 };
 
 // ================= NEW FORM =================
 module.exports.renderNewForm = (req, res) => {
-    res.render("listings/new.ejs");
+  res.render("listings/new.ejs");
 };
 
-// ================= SHOW LISTING (FIXED) =================
+// ================= SHOW =================
 module.exports.showListing = async (req, res) => {
-    const { id } = req.params;
+  const { id } = req.params;
 
-    // invalid ObjectId
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-        req.flash("error", "Invalid Listing ID");
-        return res.redirect("/listings");
-    }
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    req.flash("error", "Invalid Listing ID");
+    return res.redirect("/listings");
+  }
 
-    const listing = await Listing.findById(id)
-        .populate({
-            path: "reviews",
-            populate: { path: "author" },
-        })
-        .populate("owner");
+  const listing = await Listing.findById(id)
+    .populate("owner")
+    .populate({
+      path: "reviews",
+      populate: { path: "author" },
+    });
 
-    if (!listing) {
-        req.flash("error", "Listing you requested does not exist");
-        return res.redirect("/listings"); // ✅ IMPORTANT RETURN
-    }
+  if (!listing) {
+    req.flash("error", "Listing not found");
+    return res.redirect("/listings");
+  }
 
-    res.render("listings/show.ejs", { listing });
+  res.render("listings/show.ejs", { listing });
 };
 
-// ================= CREATE =================
+// ================= CREATE (🔥 FIXED) =================
 module.exports.createListing = async (req, res) => {
-    let url = req.file.path;
-    let filename = req.file.filename;
+  const listing = new Listing(req.body.listing);
+  listing.owner = req.user._id;
 
-    const newListing = new Listing(req.body.listing);
-    newListing.owner = req.user._id;
-    newListing.image = { url, filename };
+  if (req.file) {
+    listing.image = {
+      url: req.file.path,
+      filename: req.file.filename,
+    };
+  } else {
+    listing.image = {
+      url: "https://res.cloudinary.com/demo/image/upload/sample.jpg",
+      filename: "default",
+    };
+  }
 
-    await newListing.save();
-
-    req.flash("success", "New listing created!");
-    return res.redirect("/listings");
+  await listing.save();
+  req.flash("success", "New listing created!");
+  res.redirect("/listings");
 };
 
 // ================= EDIT FORM =================
 module.exports.renderEditForm = async (req, res) => {
-    let { id } = req.params;
+  const { id } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-        req.flash("error", "Invalid Listing ID");
-        return res.redirect("/listings");
-    }
+  const listing = await Listing.findById(id);
+  if (!listing) {
+    req.flash("error", "Listing not found");
+    return res.redirect("/listings");
+  }
 
-    const listing = await Listing.findById(id);
-    if (!listing) {
-        req.flash("error", "Listing not found");
-        return res.redirect("/listings");
-    }
+  const originalImageUrl = listing.image.url.replace(
+    "/upload",
+    "/upload/w_300"
+  );
 
-    let originalImageUrl = listing.image.url.replace(
-        "/upload",
-        "/upload/w_250"
-    );
-
-    res.render("listings/edit.ejs", { listing, originalImageUrl });
+  res.render("listings/edit.ejs", { listing, originalImageUrl });
 };
 
 // ================= UPDATE =================
 module.exports.updateListing = async (req, res) => {
-    let { id } = req.params;
+  const { id } = req.params;
 
-    const listing = await Listing.findByIdAndUpdate(
-        id,
-        { ...req.body.listing },
-        { new: true }
-    );
+  const listing = await Listing.findByIdAndUpdate(
+    id,
+    req.body.listing,
+    { new: true }
+  );
 
-    if (!listing) {
-        req.flash("error", "Listing not found");
-        return res.redirect("/listings");
-    }
+  if (!listing) {
+    req.flash("error", "Listing not found");
+    return res.redirect("/listings");
+  }
 
-    if (req.file) {
-        let url = req.file.path;
-        let filename = req.file.filename;
-        listing.image = { url, filename };
-        await listing.save();
-    }
+  if (req.file) {
+    listing.image = {
+      url: req.file.path,
+      filename: req.file.filename,
+    };
+    await listing.save();
+  }
 
-    req.flash("success", "Listing updated!");
-    return res.redirect(`/listings/${id}`);
+  req.flash("success", "Listing updated!");
+  res.redirect(`/listings/${id}`);
 };
 
 // ================= DELETE =================
 module.exports.destroyListing = async (req, res) => {
-    let { id } = req.params;
+  const { id } = req.params;
 
-    await Listing.findByIdAndDelete(id);
-
-    req.flash("success", "Listing deleted!");
-    return res.redirect("/listings");
+  await Listing.findByIdAndDelete(id);
+  req.flash("success", "Listing deleted!");
+  res.redirect("/listings");
 };
 
 
